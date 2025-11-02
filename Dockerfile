@@ -5,11 +5,12 @@ FROM python:3.10-slim
 WORKDIR /app
 
 # --- START OF CORRECTED SECTION ---
-# Install system dependencies, NOW INCLUDING JQ
+# Install system dependencies, NOW INCLUDING JQ and UNZIP
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
     jq \
+    unzip \
     --no-install-recommends \
     && wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/google-chrome-keyring.gpg \
     && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
@@ -20,7 +21,7 @@ RUN apt-get update && apt-get install -y \
 # --- END OF CORRECTED SECTION ---
 
 # Download and install the matching version of ChromeDriver
-# This command chain can now succeed because jq is installed.
+# This command chain can now succeed because all tools (wget, jq, unzip) are installed.
 RUN CHROME_VERSION=$(google-chrome --version | cut -d " " -f3) \
     && DRIVER_VERSION_URL=$(wget -qO- "https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json" | jq -r ".versions[] | select(.version | startswith(\"${CHROME_VERSION%.*}\")) | .downloads.chromedriver[] | select(.platform==\"linux64\") | .url" | tail -n 1) \
     && wget -q ${DRIVER_VERSION_URL} -O chromedriver_linux64.zip \
