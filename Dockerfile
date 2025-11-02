@@ -4,28 +4,26 @@ FROM python:3.10-slim
 # Set the working directory in the container
 WORKDIR /app
 
-# --- START OF CORRECTED CHROME INSTALLATION ---
-# Install necessary system dependencies using the modern, reliable method.
+# --- START OF CORRECTED SECTION ---
+# Install system dependencies, NOW INCLUDING JQ
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
+    jq \
     --no-install-recommends \
-    # 1. Download Google's signing key and save it to the trusted keyrings directory
     && wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/google-chrome-keyring.gpg \
-    # 2. Add the Google Chrome repository to the sources list, signed by the new key
     && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
-    # 3. Update package lists and install Chrome
     && apt-get update && apt-get install -y \
     google-chrome-stable \
     --no-install-recommends \
-    # 4. Clean up the apt cache to keep the image small
     && rm -rf /var/lib/apt/lists/*
-# --- END OF CORRECTED CHROME INSTALLATION ---
+# --- END OF CORRECTED SECTION ---
 
-# This part for chromedriver can remain similar, but let's make it more robust.
+# Download and install the matching version of ChromeDriver
+# This command chain can now succeed because jq is installed.
 RUN CHROME_VERSION=$(google-chrome --version | cut -d " " -f3) \
-    && DRIVER_VERSION=$(wget -qO- "https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json" | jq -r ".versions[] | select(.version | startswith(\"${CHROME_VERSION%.*}\")) | .downloads.chromedriver[0].url" | tail -n 1) \
-    && wget -q ${DRIVER_VERSION} -O chromedriver_linux64.zip \
+    && DRIVER_VERSION_URL=$(wget -qO- "https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json" | jq -r ".versions[] | select(.version | startswith(\"${CHROME_VERSION%.*}\")) | .downloads.chromedriver[] | select(.platform==\"linux64\") | .url" | tail -n 1) \
+    && wget -q ${DRIVER_VERSION_URL} -O chromedriver_linux64.zip \
     && unzip chromedriver_linux64.zip \
     && mv chromedriver-linux64/chromedriver /usr/bin/chromedriver \
     && chmod +x /usr/bin/chromedriver \
