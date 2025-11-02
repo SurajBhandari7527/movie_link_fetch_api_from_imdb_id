@@ -1,6 +1,7 @@
 import os
 from flask import Flask, request, jsonify
 from selenium import webdriver
+from selenium.webdriver.chrome.service import Service as ChromeService  # <-- IMPORT THIS
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -20,25 +21,26 @@ def get_streaming_link(imdb_id, provider_name="Prime Video"):
 
     # --- Selenium Setup for Render (Linux Environment) ---
     options = webdriver.ChromeOptions()
-    options.binary_location = os.environ.get("GOOGLE_CHROME_BIN") # Path to Chrome binary
+    options.binary_location = os.environ.get("GOOGLE_CHROME_BIN")
     options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     
-    # Disable images and CSS for speed
     prefs = {"profile.managed_default_content_settings.images": 2, "profile.default_content_setting_values.css": 2}
     options.add_experimental_option("prefs", prefs)
     
-    # Path to chromedriver
+    # --- START OF THE FIX ---
+    # Use the modern Service object to initialize the driver
     driver_path = os.environ.get("CHROMEDRIVER_PATH")
-    driver = webdriver.Chrome(executable_path=driver_path, options=options)
+    service = ChromeService(executable_path=driver_path)
+    driver = webdriver.Chrome(service=service, options=options)
+    # --- END OF THE FIX ---
     
     link = None
     try:
         driver.get(url)
         aria_label_text = f"Watch on {provider_name}"
         
-        # Wait up to 10 seconds for the link to appear
         wait = WebDriverWait(driver, 10)
         link_element = wait.until(
             EC.presence_of_element_located((By.CSS_SELECTOR, f"a[aria-label='{aria_label_text}']"))
@@ -54,27 +56,29 @@ def get_streaming_link(imdb_id, provider_name="Prime Video"):
     finally:
         driver.quit()
 
+    # If the link is still None after a successful run (shouldn't happen with this logic)
+    if link is None:
+        return {"error": "Scraping completed but no link was extracted."}
+
     return {"streaming_url": link}
 
 # --- API Endpoint ---
 @app.route('/api/get-link', methods=['GET'])
 def api_get_link():
-    # Get imdb_id from query parameter (e.g., ?imdb_id=tt5950044)
     imdb_id = request.args.get('imdb_id')
     
     if not imdb_id:
         return jsonify({"error": "imdb_id parameter is required"}), 400
 
-    # For this example, we'll hardcode Prime Video, but you could also
-    # make the provider a query parameter.
     result = get_streaming_link(imdb_id, provider_name="Prime Video")
     
     if "error" in result:
-        return jsonify(result), 404 # Not Found or other appropriate error
+        # Use 500 for internal errors, 404 if link is not found
+        status_code = 500 if "internal" in result["error"] else 404
+        return jsonify(result), status_code
     
     return jsonify(result), 200
 
 if __name__ == "__main__":
-    # Port is set by Render's environment variable. Default to 10000 for local testing.
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
